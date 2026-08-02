@@ -14,6 +14,7 @@ use crate::{
 use super::{
     CompressionType, ConnectionState, ConnectionType, PacketHeader, PacketSegment,
     ReadWriteIpcSegment, SegmentData, SegmentType, compression::compress, parse_packet,
+    parse_packet_header,
 };
 
 pub async fn send_packet<T: ReadWriteIpcSegment>(
@@ -96,17 +97,28 @@ pub async fn send_custom_world_packet(segment: CustomIpcSegment) -> Option<Custo
     )
     .await;
 
-    // read response
-    let mut buf = vec![0; RECEIVE_BUFFER_SIZE];
-    let n = stream.read(&mut buf).await.expect("Failed to read data!");
-    if n != 0 {
-        let segments = parse_packet::<CustomIpcSegment>(&buf[..n], &mut packet_state);
+    // Read the response. A single read() isn't guaranteed to return a whole packet (TCP doesn't
+    // preserve message boundaries), so read the fixed-size header first to learn the real
+    // length, then read exactly that many remaining bytes before parsing. Previously this
+    // assumed one read() = one full packet, which could hand parse_packet() a truncated buffer;
+    // parse_packet() returns an empty Vec on any parse failure, and indexing segments[0] on that
+    // panicked the whole process (see redstrate/Kawari#437).
+    let header_size = std::mem::size_of::<PacketHeader>();
+    let mut buf = vec![0u8; header_size];
+    stream.read_exact(&mut buf).await.ok()?;
 
-        return match &segments[0].data {
-            SegmentData::KawariIpc(data) => Some(data.clone()),
-            _ => None,
-        };
+    let header = parse_packet_header(&buf);
+    let body_size = (header.size as usize).saturating_sub(header_size);
+    if body_size > 0 {
+        let mut body = vec![0u8; body_size];
+        stream.read_exact(&mut body).await.ok()?;
+        buf.extend_from_slice(&body);
     }
 
-    None
+    let segments = parse_packet::<CustomIpcSegment>(&buf, &mut packet_state);
+
+    match &segments.first()?.data {
+        SegmentData::KawariIpc(data) => Some(data.clone()),
+        _ => None,
+    }
 }
