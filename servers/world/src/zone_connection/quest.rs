@@ -206,8 +206,36 @@ impl ZoneConnection {
         self.send_quest_tracker().await;
     }
 
-    pub async fn set_quest_sequence(&mut self, _id: u32, _sequence: u8) {
-        // TODO: implement
+    pub async fn set_quest_sequence(&mut self, id: u32, sequence: u8) {
+        let adjusted_id = adjust_quest_id(id);
+
+        let Some(quest) = self
+            .player_data
+            .quest
+            .active
+            .0
+            .iter_mut()
+            .find(|x| x.id == adjusted_id as u16)
+        else {
+            tracing::warn!(
+                "Tried to set sequence for quest {adjusted_id}, but it isn't active!"
+            );
+            return;
+        };
+        quest.sequence = sequence;
+
+        let ipc = ServerZoneIpcSegment::new(ServerZoneIpcData::UpdateQuest {
+            index: 0,
+            quest: ActiveQuest {
+                id: adjusted_id as u16,
+                sequence,
+                flags: 1,
+                ..Default::default()
+            },
+        });
+        self.send_ipc_self(ipc).await;
+
+        self.send_quest_tracker().await;
     }
 
     pub async fn incomplete_quest(&mut self, id: u32) {
