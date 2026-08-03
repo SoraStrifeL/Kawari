@@ -90,11 +90,23 @@ impl ZoneConnection {
         });
         self.send_ipc_self(ipc).await;
 
-        // Then add it to our own internal data model
-        self.player_data.quest.active.0.push(PersistentQuest {
-            id: adjusted_id as u16,
-            sequence: 0xFF,
-        });
+        // Only add it to our internal data model if it isn't already active. accept_quest()
+        // can be called more than once for the same quest - e.g. a quest giver's onTalk not
+        // checking whether the quest was already accepted before replaying the accept prompt
+        // from scratch - and without this guard, each call pushed another duplicate entry.
+        let already_active = self
+            .player_data
+            .quest
+            .active
+            .0
+            .iter()
+            .any(|x| x.id == adjusted_id as u16);
+        if !already_active {
+            self.player_data.quest.active.0.push(PersistentQuest {
+                id: adjusted_id as u16,
+                sequence: 0xFF,
+            });
+        }
 
         self.send_quest_tracker().await;
     }
