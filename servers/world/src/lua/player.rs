@@ -498,6 +498,22 @@ impl LuaPlayer {
             .push(LuaTask::QuestSequence { id, sequence });
     }
 
+    /// Returns the current sequence for the given quest, or 0 if it isn't active.
+    /// Unlike quest_sequence() (a queued LuaTask, applied later), this reads
+    /// player_data directly - safe because player_data is a fresh clone of the
+    /// connection's state as of the start of the current event dispatch.
+    fn get_quest_sequence(&self, id: u32) -> u8 {
+        let adjusted_id = adjust_quest_id(id);
+        self.player_data
+            .quest
+            .active
+            .0
+            .iter()
+            .find(|x| x.id == adjusted_id as u16)
+            .map(|x| x.sequence)
+            .unwrap_or(0)
+    }
+
     fn cancel_quest(&mut self, id: u32) {
         self.queued_tasks.push(LuaTask::CancelQuest { id });
     }
@@ -975,6 +991,9 @@ impl UserData for LuaPlayer {
                 Ok(())
             },
         );
+        methods.add_method("get_quest_sequence", |_, this, quest_id: u32| {
+            Ok(this.get_quest_sequence(quest_id))
+        });
         methods.add_method_mut("cancel_quest", |_, this, quest_id: u32| {
             this.cancel_quest(quest_id);
             Ok(())
