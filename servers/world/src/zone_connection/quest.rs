@@ -126,20 +126,26 @@ impl ZoneConnection {
             self.player_data.quest.active.0.remove(index);
         }
 
-        // Grant rewards
-        let rewards;
-        {
-            let mut gamedata = self.gamedata.lock();
-            rewards = gamedata.get_quest_rewards(id);
+        // Only grant rewards once - finish_quest() can be called more than once for the
+        // same quest (same class of issue as accept_quest(): nothing stops a quest-giver
+        // script from replaying its turn-in flow), and rewards must not be granted twice.
+        if !self.player_data.quest.completed.contains(adjusted_id) {
+            let rewards;
+            {
+                let mut gamedata = self.gamedata.lock();
+                rewards = gamedata.get_quest_rewards(id);
+            }
+
+            // Add gil
+            // TODO: send log message
+            self.player_data.inventory.currency.get_slot_mut(0).quantity += rewards.1;
+            self.send_inventory().await;
+
+            // Add exp
+            self.add_exp(rewards.0 as i32).await;
+
+            self.player_data.quest.completed.set(adjusted_id);
         }
-
-        // Add gil
-        // TODO: send log message
-        self.player_data.inventory.currency.get_slot_mut(0).quantity += rewards.1;
-        self.send_inventory().await;
-
-        // Add exp
-        self.add_exp(rewards.0 as i32).await;
 
         // Ensure its updated in the journal or whatever
         let ipc = ServerZoneIpcSegment::new(ServerZoneIpcData::UpdateQuest {
@@ -147,8 +153,6 @@ impl ZoneConnection {
             quest: ActiveQuest::default(),
         });
         self.send_ipc_self(ipc).await;
-
-        self.player_data.quest.completed.set(adjusted_id);
 
         let ipc = ServerZoneIpcSegment::new(ServerZoneIpcData::FinishQuest {
             quest_id: adjusted_id as u16,
