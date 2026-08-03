@@ -109,6 +109,10 @@ pub async fn send_custom_world_packet(segment: CustomIpcSegment) -> Option<Custo
 
     let header = parse_packet_header(&buf);
     let body_size = (header.size as usize).saturating_sub(header_size);
+    if body_size > RECEIVE_BUFFER_SIZE {
+        tracing::warn!("Declared packet size ({body_size}) exceeds RECEIVE_BUFFER_SIZE, dropping");
+        return None;
+    }
     if body_size > 0 {
         let mut body = vec![0u8; body_size];
         stream.read_exact(&mut body).await.ok()?;
