@@ -1,8 +1,10 @@
 use std::collections::HashMap;
+use std::time::Instant;
 
 use crate::{
     ClientHandle, ClientId, FromServer,
     common::SpawnKind,
+    lua::LuaTask,
     server::{
         ClientState, WorldServer,
         actor::NetworkedActor,
@@ -22,6 +24,11 @@ pub struct NetworkState {
     pub linkshells: HashMap<u64, Vec<ObjectId>>,
     pub commit_parties: bool,
     pub global_action_sequence: u32,
+    /// Lua tasks scheduled (via ToServer::ScheduleTasks) to be delivered
+    /// back to a specific client once their delay elapses - drained by the
+    /// same periodic tick that processes instances' queued_task lists. Not
+    /// instance-scoped, since this needs to work for open-world players too.
+    pub player_queued_tasks: Vec<(Instant, ClientId, Vec<LuaTask>)>,
 }
 
 impl Default for NetworkState {
@@ -35,6 +42,7 @@ impl Default for NetworkState {
             linkshells: Default::default(),
             commit_parties: Default::default(),
             global_action_sequence: 2, // Not sure why we have to begin at 2, but we do otherwise the client rejects them.
+            player_queued_tasks: Default::default(),
         }
     }
 }

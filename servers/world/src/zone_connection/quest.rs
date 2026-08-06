@@ -18,6 +18,7 @@ impl ZoneConnection {
                 id: quest.id,
                 sequence: quest.sequence,
                 flags: 1,
+                bitflags: quest.bitflags,
                 ..Default::default()
             });
         }
@@ -105,6 +106,7 @@ impl ZoneConnection {
             self.player_data.quest.active.0.push(PersistentQuest {
                 id: adjusted_id as u16,
                 sequence: 0xFF,
+                bitflags: [0; 6],
             });
         }
 
@@ -223,6 +225,7 @@ impl ZoneConnection {
             return;
         };
         quest.sequence = sequence;
+        let bitflags = quest.bitflags;
 
         let ipc = ServerZoneIpcSegment::new(ServerZoneIpcData::UpdateQuest {
             index: 0,
@@ -230,6 +233,50 @@ impl ZoneConnection {
                 id: adjusted_id as u16,
                 sequence,
                 flags: 1,
+                bitflags,
+                ..Default::default()
+            },
+        });
+        self.send_ipc_self(ipc).await;
+
+        self.send_quest_tracker().await;
+    }
+
+    /// Sets one of a quest's 6 per-quest bit flags (retail's UI8AL/UI8BH/
+    /// UI8BL/UI8CH/UI8CL/UI8DH quest variables), used for tracking parallel
+    /// sub-objectives independently of `sequence`. `index` selects which of
+    /// the 6 flags (0-5); out-of-range indices are ignored.
+    pub async fn set_quest_bit_flag(&mut self, id: u32, index: u8, value: bool) {
+        let adjusted_id = adjust_quest_id(id);
+
+        let Some(quest) = self
+            .player_data
+            .quest
+            .active
+            .0
+            .iter_mut()
+            .find(|x| x.id == adjusted_id as u16)
+        else {
+            tracing::warn!(
+                "Tried to set bit flag {index} for quest {adjusted_id}, but it isn't active!"
+            );
+            return;
+        };
+        let Some(flag) = quest.bitflags.get_mut(index as usize) else {
+            tracing::warn!("Tried to set out-of-range bit flag {index} for quest {adjusted_id}!");
+            return;
+        };
+        *flag = value as u8;
+        let sequence = quest.sequence;
+        let bitflags = quest.bitflags;
+
+        let ipc = ServerZoneIpcSegment::new(ServerZoneIpcData::UpdateQuest {
+            index: 0,
+            quest: ActiveQuest {
+                id: adjusted_id as u16,
+                sequence,
+                flags: 1,
+                bitflags,
                 ..Default::default()
             },
         });

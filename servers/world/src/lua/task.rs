@@ -3,7 +3,7 @@ use crate::{
     inventory::{CrystalKind, CurrencyKind},
 };
 use kawari::{
-    common::Position,
+    common::{ObjectId, Position},
     ipc::zone::{EventType, GrandCompany, SceneFlags, ServerZoneIpcSegment},
     packet::PacketSegment,
 };
@@ -183,6 +183,11 @@ pub enum LuaTask {
         id: u32,
         sequence: u8,
     },
+    QuestBitFlag {
+        id: u32,
+        index: u8,
+        value: bool,
+    },
     CancelQuest {
         id: u32,
     },
@@ -232,4 +237,16 @@ pub enum LuaTask {
         name: String,
     },
     FinishDyeing {},
+    /// Begins an open-world EventAction (e.g. attuning to an aetheryte) -
+    /// the client plays the action's own animation/channel bar locally,
+    /// then the server resolves it after a matching delay via
+    /// EventActionComplete (see ToServer::ScheduleTasks).
+    EventActionStart {
+        action_id: u32,
+        target: ObjectId,
+    },
+    /// Delivered back to the client after EventActionStart's delay elapses;
+    /// resumes whichever event is currently on top of this player's event
+    /// stack via EventHandler::on_event_action_complete.
+    EventActionComplete {},
 }

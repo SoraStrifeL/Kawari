@@ -158,6 +158,27 @@ impl EventHandler for LuaEventHandler {
         }
     }
 
+    async fn on_event_action_complete(&self, _event: &Event, player: &mut LuaPlayer) {
+        let mut run_script = || {
+            self.lua.0.scope(|scope| {
+                let player = scope.create_userdata_ref_mut(player)?;
+
+                let func: Function = self.lua.0.globals().get("onEventActionComplete")?;
+
+                func.call::<()>(player)?;
+
+                Ok(())
+            })
+        };
+        if let Err(err) = run_script() {
+            tracing::warn!(
+                "Syntax error while calling onEventActionComplete in {}: {:?}",
+                self.file_name,
+                err
+            );
+        }
+    }
+
     async fn on_yield(
         &self,
         _event: &Event,

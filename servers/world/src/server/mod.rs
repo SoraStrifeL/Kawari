@@ -12,7 +12,7 @@ use tokio::sync::mpsc::Receiver;
 
 use crate::{
     GameData, Navmesh,
-    lua::KawariLua,
+    lua::{KawariLua, LuaTask},
     server::{
         action::{execute_action, handle_action_messages},
         actor::{
@@ -879,6 +879,31 @@ pub async fn server_main_loop(
                                     *combo_sequence = 0;
                                 }
                             }
+                        }
+                    }
+                }
+
+                // Deliver any scheduled per-client Lua tasks whose delay has
+                // elapsed (e.g. EventActionComplete, from ToServer::ScheduleTasks) -
+                // not instance-scoped, since these need to work for open-world
+                // players too, not just instanced content.
+                {
+                    let mut network = network.lock();
+                    let due: Vec<(ClientId, Vec<LuaTask>)> = {
+                        let now = Instant::now();
+                        let due = network
+                            .player_queued_tasks
+                            .iter()
+                            .filter(|(point, ..)| *point <= now)
+                            .map(|(_, client_id, tasks)| (*client_id, tasks.clone()))
+                            .collect();
+                        network.player_queued_tasks.retain(|(point, ..)| *point > now);
+                        due
+                    };
+
+                    for (client_id, tasks) in due {
+                        if let Some((handle, _)) = network.clients.get_mut(&client_id) {
+                            let _ = handle.send(FromServer::NewTasks(tasks));
                         }
                     }
                 }
@@ -2313,6 +2338,12 @@ pub async fn server_main_loop(
                     if let Err(err) = lua.init(game_data.clone()) {
                         tracing::warn!("Failed to load Init.lua: {:?}", err);
                     }
+                }
+                ToServer::ScheduleTasks(client_id, delay, tasks) => {
+                    let mut network = network.lock();
+                    network
+                        .player_queued_tasks
+                        .push((Instant::now() + delay, client_id, tasks));
                 }
                 ToServer::Dismounted(from_actor_id, party_id) => {
                     let mut network = network.lock();

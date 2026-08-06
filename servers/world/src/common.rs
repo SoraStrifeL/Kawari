@@ -4,6 +4,7 @@ use std::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
+    time::Duration,
 };
 
 use tokio::sync::mpsc::Sender;
@@ -483,6 +484,11 @@ pub enum ToServer {
     TranslateFurniture(ObjectId, (bool, u8), u16, Position, f32, bool),
     /// The client offers a teleport to nearby party members.
     OfferTeleportToParty(Option<u64>, ObjectId, u16, TeleportQuery),
+    /// Deliver these Lua tasks back to this client after the given delay -
+    /// e.g. for EventAction completion (LuaTask::EventActionComplete),
+    /// which needs a delay matching how long the client spends playing the
+    /// EventAction's animation before the interaction actually resolves.
+    ScheduleTasks(ClientId, Duration, Vec<LuaTask>),
 }
 
 #[derive(Clone, Debug)]

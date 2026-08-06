@@ -37,6 +37,10 @@ pub trait EventHandler: std::fmt::Debug + Send + Sync {
 
     async fn on_talk(&self, event: &Event, target_id: ObjectTypeId, player: &mut LuaPlayer) {}
 
+    /// Called when an open-world EventAction started via player:event_action()
+    /// resolves, after the client has finished playing its animation.
+    async fn on_event_action_complete(&self, event: &Event, player: &mut LuaPlayer) {}
+
     async fn on_yield(
         &self,
         event: &Event,

@@ -1,5 +1,7 @@
 //! Translates tasks and handles other information from `LuaPlayer`.
 
+use std::time::Duration;
+
 use crate::{
     Event, ItemInfoQuery, ToServer, ZoneConnection,
     event::EventHandler,
@@ -660,6 +662,9 @@ impl ZoneConnection {
                 LuaTask::QuestSequence { id, sequence } => {
                     self.set_quest_sequence(*id, *sequence).await;
                 }
+                LuaTask::QuestBitFlag { id, index, value } => {
+                    self.set_quest_bit_flag(*id, *index, *value).await;
+                }
                 LuaTask::CancelQuest { id } => {
                     self.cancel_quest(*id).await;
                 }
@@ -861,6 +866,33 @@ impl ZoneConnection {
                         self.dyeing_information = None;
                     } else {
                         tracing::warn!("finish_dyeing called without dye information prepared?!");
+                    }
+                }
+                LuaTask::EventActionStart {
+                    action_id,
+                    target: _,
+                } => {
+                    // target is accepted (matching the retail/Director API shape) but not
+                    // needed yet - we only send this to the player themselves for now, not
+                    // broadcast to nearby clients the way Director::event_action does.
+                    self.actor_control_self(ActorControlCategory::EventAction {
+                        unk1: 1,
+                        id: *action_id,
+                    })
+                    .await;
+
+                    // TODO: don't hardcode this duration, take it from the EventAction sheet!
+                    self.handle
+                        .send(ToServer::ScheduleTasks(
+                            self.id,
+                            Duration::from_secs(2),
+                            vec![LuaTask::EventActionComplete {}],
+                        ))
+                        .await;
+                }
+                LuaTask::EventActionComplete {} => {
+                    if let Some(event) = events.last_mut() {
+                        event.0.on_event_action_complete(&event.1, player).await;
                     }
                 }
             }

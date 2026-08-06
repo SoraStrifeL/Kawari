@@ -12,13 +12,37 @@ function aetheryteId()
     return EVENT_ID & 0xFFFF
 end
 
+-- Retail's real attunement action id (ACTION_ATTUNE), confirmed against the
+-- SapphireServer/Sapphire reference (src/scripts/common/aethernet/Aetheryte.cpp).
+ACTION_ATTUNE = 0x13
+
 function onTalk(target, player)
+    -- Scoped to Gridania's Lower Decks aetheryte (id 2, the one "Close to
+    -- Home" quest 124 needs) to avoid spamming logs for every aetheryte in
+    -- the game.
+    if aetheryteId() == 2 then
+        print("[CloseToHome/aetheryte] onTalk has_aetheryte=" .. tostring(player:has_aetheryte(2)))
+    end
+
     if not player:has_aetheryte(aetheryteId()) then
-        -- TODO: play attunement animation
-        player:unlock_aetheryte(1, aetheryteId())
+        -- Plays the client's own attunement animation/channel bar, then
+        -- calls back into onEventActionComplete below once it's done -
+        -- matching retail's real eventActionStart flow instead of silently
+        -- unlocking with no visible interaction at all.
+        player:event_action(ACTION_ATTUNE, target.object_id)
+        return
     end
 
     player:play_scene(SCENE_SHOW_MENU, HIDE_HOTBAR, {0})
+end
+
+function onEventActionComplete(player)
+    if aetheryteId() == 2 then
+        print("[CloseToHome/aetheryte] onEventActionComplete, unlocking")
+    end
+
+    player:unlock_aetheryte(1, aetheryteId())
+    player:finish_event()
 end
 
 function onReturn(scene, results, player)

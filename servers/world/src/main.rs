@@ -4177,6 +4177,15 @@ async fn process_server_msg(
                 );
             }
         }
+
+        // Process any tasks queued up by handling the message above (e.g.
+        // NewTasks/EventActionComplete) - without this, they'd just sit in
+        // connection.queued_tasks until the client happens to send a packet.
+        lua_player.queued_tasks.append(&mut connection.queued_tasks);
+        if connection.process_lua_player(lua_player, events).await {
+            connection.process_lua_player(lua_player, events).await;
+        }
+        lua_player.player_data = connection.player_data.clone();
     }
 }
 

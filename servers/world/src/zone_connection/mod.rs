@@ -75,6 +75,13 @@ pub struct PersistentQuest {
     pub id: u16,
     /// Sequence in the quest.
     pub sequence: u8,
+    /// Per-quest bit flags (retail's UI8AL/UI8BH/UI8BL/UI8CH/UI8CL/UI8DH quest
+    /// variables), used for tracking parallel sub-objectives independently of
+    /// `sequence` - unlike `sequence`, the client doesn't need these to match
+    /// any predefined step, so they're free for scripts to use however a
+    /// given quest needs.
+    #[serde(default)]
+    pub bitflags: [u8; 6],
 }
 
 /// Persistent player data.

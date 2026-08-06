@@ -9,7 +9,7 @@ use crate::{
     zone_connection::BaseParameters,
 };
 use kawari::{
-    common::{HandlerId, ObjectTypeId, ObjectTypeKind, Position, adjust_quest_id},
+    common::{HandlerId, ObjectId, ObjectTypeId, ObjectTypeKind, Position, adjust_quest_id},
     ipc::zone::{
         ActorControlCategory, ActorControlSelf, ActorSetPos, EventType, GrandCompany, OnlineStatus,
         SceneFlags, ServerNoticeFlags, ServerNoticeMessage, ServerZoneIpcData,
@@ -493,6 +493,18 @@ impl LuaPlayer {
             .push(LuaTask::RegisterForContent { content_id });
     }
 
+    /// Begins an open-world EventAction (e.g. attuning to an aetheryte,
+    /// action id 0x13 in retail) - the client plays that action's own
+    /// animation/channel bar, then calls back into this event's
+    /// onEventActionComplete once the client is done, via a scheduled
+    /// LuaTask::EventActionComplete (see ToServer::ScheduleTasks).
+    fn event_action(&mut self, action_id: u32, target: u32) {
+        self.queued_tasks.push(LuaTask::EventActionStart {
+            action_id,
+            target: ObjectId(target),
+        });
+    }
+
     fn quest_sequence(&mut self, id: u32, sequence: u8) {
         self.queued_tasks
             .push(LuaTask::QuestSequence { id, sequence });
@@ -512,6 +524,29 @@ impl LuaPlayer {
             .find(|x| x.id == adjusted_id as u16)
             .map(|x| x.sequence)
             .unwrap_or(0)
+    }
+
+    /// Sets one of a quest's 6 per-quest bit flags (index 0-5), used for
+    /// tracking parallel sub-objectives independently of `sequence`.
+    fn quest_bit_flag(&mut self, id: u32, index: u8, value: bool) {
+        self.queued_tasks
+            .push(LuaTask::QuestBitFlag { id, index, value });
+    }
+
+    /// Returns whether the given quest's bit flag (index 0-5) is set, or
+    /// false if the quest isn't active or the index is out of range. Reads
+    /// player_data directly, same as get_quest_sequence().
+    fn get_quest_bit_flag(&self, id: u32, index: u8) -> bool {
+        let adjusted_id = adjust_quest_id(id);
+        self.player_data
+            .quest
+            .active
+            .0
+            .iter()
+            .find(|x| x.id == adjusted_id as u16)
+            .and_then(|x| x.bitflags.get(index as usize))
+            .map(|&flag| flag != 0)
+            .unwrap_or(false)
     }
 
     fn cancel_quest(&mut self, id: u32) {
@@ -985,6 +1020,13 @@ impl UserData for LuaPlayer {
             Ok(())
         });
         methods.add_method_mut(
+            "event_action",
+            |_, this, (action_id, target): (u32, u32)| {
+                this.event_action(action_id, target);
+                Ok(())
+            },
+        );
+        methods.add_method_mut(
             "quest_sequence",
             |_, this, (quest_id, sequence): (u32, u8)| {
                 this.quest_sequence(quest_id, sequence);
@@ -994,6 +1036,17 @@ impl UserData for LuaPlayer {
         methods.add_method("get_quest_sequence", |_, this, quest_id: u32| {
             Ok(this.get_quest_sequence(quest_id))
         });
+        methods.add_method_mut(
+            "quest_bit_flag",
+            |_, this, (quest_id, index, value): (u32, u8, bool)| {
+                this.quest_bit_flag(quest_id, index, value);
+                Ok(())
+            },
+        );
+        methods.add_method(
+            "get_quest_bit_flag",
+            |_, this, (quest_id, index): (u32, u8)| Ok(this.get_quest_bit_flag(quest_id, index)),
+        );
         methods.add_method_mut("cancel_quest", |_, this, quest_id: u32| {
             this.cancel_quest(quest_id);
             Ok(())
